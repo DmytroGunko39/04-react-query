@@ -1,56 +1,51 @@
 import "./App.module.css";
 import SearchBar from "../SearchBar/SearchBar";
 import MovieGrid from "../MovieGrid/MovieGrid";
+import MovieModal from "../MovieModal/MovieModal";
+import ErrorMessage from "../ErrorMessage/ErrorMessage";
+import Pagination from "../Pagination/Pagination";
 import { Toaster, toast } from "react-hot-toast";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Movie } from "../../types/movie";
 import Loader from "../Loader/Loader";
 import { fetchMovies } from "../../services/movieService";
-import ErrorMessage from "../ErrorMessage/ErrorMessage";
-import MovieModal from "../MovieModal/MovieModal";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 
 export default function App() {
-  const [movies, setMovies] = useState<Movie[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isError, setIsError] = useState(false);
+  const [page, setPage] = useState(1);
+  const [topic, setSearchTopic] = useState("");
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const { data, isLoading, isError, isSuccess } = useQuery({
+    queryKey: ["movies", topic, page],
+    queryFn: () => fetchMovies(topic, page),
+    enabled: topic.trim().length > 0,
+    placeholderData: keepPreviousData,
+  });
 
-  const handleSearch = async (query: string) => {
-    setIsLoading(true);
-    setIsError(false);
+  const totalPages = data?.total_pages ?? 0;
 
-    if (!query.trim()) {
-      setIsLoading(false);
-      return;
+  useEffect(() => {
+    if (!isLoading && !isError && data?.results?.length === 0 && topic.trim()) {
+      toast.error("No movies found for your request.");
     }
+  }, [data, topic, isLoading, isError]);
 
-    setMovies([]);
-
-    try {
-      //Using the remote function axios
-      const results = await fetchMovies(query);
-
-      if (results.length === 0) {
-        toast.error("No movies found for your request.");
-        return;
-      }
-
-      setMovies(results);
-    } catch {
-      setIsError(true);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleSearch = (newTopic: string) => {
+    setSearchTopic(newTopic);
+    setPage(1);
   };
 
   return (
     <div>
       <Toaster position="top-center" reverseOrder={false} />
       <SearchBar onSubmit={handleSearch} />
+      {isSuccess && data?.results?.length > 0 && (
+        <Pagination totalP={totalPages} onChange={setPage} currentPage={page} />
+      )}
       {isLoading && <Loader />}
-      {movies.length > 0 && (
+      {data?.results && data?.results?.length > 0 && (
         <MovieGrid
-          movies={movies}
+          movies={data?.results}
           onSelect={(movie) => setSelectedMovie(movie)}
         />
       )}
@@ -64,13 +59,3 @@ export default function App() {
     </div>
   );
 }
-
-/* <img
-  src={
-    movie.backdrop_path
-      ? `https://image.tmdb.org/t/p/original/${movie.backdrop_path}`
-      : `https://image.tmdb.org/t/p/original/${movie.poster_path}`
-  }
-  alt={movie.title}
-  className={css.image}
-/>; */
